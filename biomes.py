@@ -18,7 +18,7 @@ RAIN = False
 HUMID = False
 #endregion
 
-#region Helpers9
+#region Helpers
 def defaultSafeArgument(index: int, defaultValue: str) -> str:
     return defaultValue if len(sys.argv) <= index else sys.argv[index]
 #endregion
@@ -37,7 +37,7 @@ class BiomeModifier:
         self.tags: list[tuple[str, float]] = tags
 
     def isValid(self, height: float, temperature: float, humidity: float, rainfall: float):
-        return self.minHeight <= height <= self.maxHeight and self.minTemperature <= temperature <= self.maxTemperature and self.minHumidity <= humidity <= self.maxHumidity and self.minRainfall <= rainfall <= self.maxHeight
+        return self.minHeight <= height <= self.maxHeight and self.minTemperature <= temperature <= self.maxTemperature and self.minHumidity <= humidity <= self.maxHumidity and self.minRainfall <= rainfall <= self.maxRainfall
 
 class Tile:
     def __init__(self, name: str, symbol: str, color: Color, tags: list[str] = []):
@@ -75,12 +75,6 @@ class Chunk:
                 print(self.tiles[i][j].symbol, end="")
             print("")
     
-def concat(strings: list[str]) -> str:
-    toReturn: str = ""
-    for i in range(len(strings)):
-        toReturn += strings[i]
-    return toReturn
-    
 class World:
     def __init__(self, seed: int):
         self.heightMap: OpenSimplex = OpenSimplex(seed)
@@ -99,7 +93,7 @@ class World:
     def narrowExclusiveCachedTileSearch(self, tags: list[str], biomeModifiers: list[str]) -> Tile:
         tags.sort()
         biomeModifiers.sort()
-        key: str = concat(tags) + concat(biomeModifiers)
+        key: str = "".join(tags) + "".join(biomeModifiers)
         if self.narrowExclusiveCachedTileSearchCache.get(key) == None:
             for i in range(len(self.tiles)):
                 if self.tiles[i].isValid(tags):
