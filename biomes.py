@@ -5,7 +5,9 @@ from pygame.time import Clock
 from pygame_gui import UIManager
 from pygame_gui.elements import UIButton, UILabel
 from enum import Enum
-import pygame, sys, math, pygame_gui
+import pygame, math, pygame_gui
+import argparse
+from numba import njit
 
 #region Constants
 WIDTH: int = 640
@@ -18,10 +20,9 @@ RAIN = False
 HUMID = False
 #endregion
 
-#region Helpers
-def defaultSafeArgument(index: int, defaultValue: str) -> str:
-    return defaultValue if len(sys.argv) <= index else sys.argv[index]
-#endregion
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--visual", action="store_true", help="Whether to run in visual mode.")
+args = parser.parse_args()
 
 class BiomeModifier:
     def __init__(self, name: str, minHeight: float, maxHeight: float, minTemperature: float, maxTemperature: float, minHumidity: float, maxHumidity: float, minRainfall: float, maxRainfall: float, tags: list[tuple[str, float]]):
@@ -75,12 +76,20 @@ class Chunk:
                 print(self.tiles[i][j].symbol, end="")
             print("")
     
+class CachedNoise:
+    def __init__(self, seed: int):
+        self.noiseMap: OpenSimplex = OpenSimplex(seed)
+        self.cachedNoise: dict[tuple[float, float], float] = {}
+
+    def getValue(self, x: float, y: float) -> float:
+        return self.noiseMap.noise2(x, y)
+
 class World:
     def __init__(self, seed: int):
-        self.heightMap: OpenSimplex = OpenSimplex(seed)
-        self.temperatureMap: OpenSimplex = OpenSimplex(seed * 2)
-        self.humidityMap: OpenSimplex = OpenSimplex(seed * 3)
-        self.rainfallMap: OpenSimplex = OpenSimplex(seed * 4)
+        self.heightMap: CachedNoise = CachedNoise(seed)
+        self.temperatureMap: CachedNoise = CachedNoise(seed * 2)
+        self.humidityMap: CachedNoise = CachedNoise(seed * 3)
+        self.rainfallMap: CachedNoise = CachedNoise(seed * 4)
         
         self.biomeModifiers: list[BiomeModifier] = []
         self.narrowExclusiveCachedTileSearchCache: dict[str, Tile] = {}
@@ -103,17 +112,17 @@ class World:
         return self.narrowExclusiveCachedTileSearchCache[key]
     
     def generate(self, x: int, y: int) -> Tile:
-        height: float = self.heightMap.noise2(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
-        temperature: float = self.temperatureMap.noise2(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
-        humidity: float = self.humidityMap.noise2(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
-        rainfall: float = self.rainfallMap.noise2(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
+        height: float = self.heightMap.getValue(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
+        temperature: float = self.temperatureMap.getValue(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
+        humidity: float = self.humidityMap.getValue(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
+        rainfall: float = self.rainfallMap.getValue(x * Chunk.NOISE_SCALE, y * Chunk.NOISE_SCALE)
         
         valid: list[BiomeModifier] = []
         names: list[str] = []
         for i in range(len(self.biomeModifiers)):
             if self.biomeModifiers[i].isValid(height, temperature, humidity, rainfall):
                 valid.append(self.biomeModifiers[i])
-                names. append(self.biomeModifiers[i].name)
+                names.append(self.biomeModifiers[i].name)
         tags: dict[str, float] = {}
         
         for i in range(len(valid)):
@@ -137,7 +146,7 @@ class World:
         if self.chunks.get((x, y)) != None:
             return
         
-        print(f"Loading New Chunk ({x}, {y})")
+        #print(f"Loading New Chunk ({x}, {y})")
         
         tiles: list[list[Tile]] = []
         
@@ -179,10 +188,9 @@ world.tiles = [
     Tile("Simple Base Tile", "$", Color(50, 100, 50), ["Simple", "Base"]),
 ]
 
-
 pygame.init()
 
-if defaultSafeArgument(1, 0):
+if not args.visual: #defaultSafeArgument(1, 0):
     while True:
         x: int = intput("Chunk X: ")
         y: int = intput("Chunk Y: ")
@@ -260,9 +268,9 @@ else:
                         
                         #DEBUG
                         if HUMID or RAIN or TEMP:
-                            r = (world.temperatureMap.noise2(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if TEMP else 0
-                            g = (world.rainfallMap.noise2(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if RAIN else 0
-                            b = (world.humidityMap.noise2(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if HUMID else 0
+                            r = (world.temperatureMap.getValue(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if TEMP else 0
+                            g = (world.rainfallMap.getValue(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if RAIN else 0
+                            b = (world.humidityMap.getValue(X * Chunk.NOISE_SCALE, Y * Chunk.NOISE_SCALE) + 1) * 128 if HUMID else 0
                             pygame.draw.rect(ala, (r, g, b, 255), (DX, DY, TILE_SIZE, TILE_SIZE))
         
         if HUMID or RAIN or TEMP:
